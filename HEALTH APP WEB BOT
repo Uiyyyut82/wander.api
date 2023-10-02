@@ -1,0 +1,84 @@
+import requests
+from flask import Flask, request, jsonify
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score, classification_report
+from twilio.twiml.messaging_response import MessagingResponse
+
+app = Flask(__name__)
+
+# Simulated dataset for health prediction (can be replaced with real data)
+data = [
+    {
+        "age": 30,
+        "diet": "healthy",
+        "exercise": "regular",
+        "health_status": "normal"
+    },
+    {
+        "age": 45,
+        "diet": "unhealthy",
+        "exercise": "irregular",
+        "health_status": "pathologic"
+    },
+    # Add more data samples...
+]
+
+# Separate features and labels for health prediction
+X = []
+y = []
+for item in data:
+    X.append([item["age"], item["diet"], item["exercise"]])
+    y.append(item["health_status"])
+
+# Split data into training and testing sets for health prediction
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# Train a Random Forest Classifier for health prediction
+health_model = RandomForestClassifier(random_state=42)
+health_model.fit(X_train, y_train)
+
+# Stonebot API endpoint for general chat
+stonebot_api_endpoint = 'YOUR_STONEBOT_API_ENDPOINT'
+
+# saaschatgptapi endpoint for fine-tuning general chat responses
+saaschatgptapi_endpoint = 'YOUR_SAASCHATGPTAPI_ENDPOINT'
+
+def get_stonebot_response(user_message):
+    response = requests.post(stonebot_api_endpoint, json={"user_message": user_message})
+    return response.json()["bot_response"]
+
+def fine_tune_response(response, user_message):
+    saaschatgptapi_data = {
+        "context": user_message,
+        "response": response
+    }
+    response_from_saaschatgptapi = requests.post(saaschatgptapi_endpoint, json=saaschatgptapi_data)
+    return response_from_saaschatgptapi.json()["response"]
+
+@app.route('/health-predict', methods=['POST'])
+def health_predict():
+    user_data = request.json
+    
+    # Extract user features for health prediction
+    user_features = [user_data["age"], user_data["diet"], user_data["exercise"]]
+    
+    # Make health predictions using the trained model
+    health_prediction = health_model.predict([user_features])[0]
+    
+    return jsonify({"health_status": health_prediction})
+
+@app.route('/chat', methods=['POST'])
+def chat():
+    user_message = request.json['user_message']
+    
+    # Get a response from Stonebot for general chat
+    stonebot_response = get_stonebot_response(user_message)
+    
+    # Fine-tune the response using saaschatgptapi
+    fine_tuned_response = fine_tune_response(stonebot_response, user_message)
+    
+    return jsonify({"bot_response": fine_tuned_response})
+
+if __name__ == '__main__':
+    app.run(debug=True)
